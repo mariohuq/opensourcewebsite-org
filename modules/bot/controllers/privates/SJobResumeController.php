@@ -49,16 +49,6 @@ class SJobResumeController extends CrudController
     {
         return [
             'model' => Resume::class,
-            'prepareViewParams' => function ($params) {
-                /** @var Resume $model */
-                $model = $params['model'] ?? null;
-
-                return [
-                    'model' => $model,
-                    'keywords' => self::getKeywordsAsString($model->getKeywordsRelation()->all()),
-                    'locationLink' => ExternalLink::getOSMLink($model->location_lat, $model->location_lon),
-                ];
-            },
             'attributes' => [
                 'name' => [],
                 'skills' => [
@@ -89,6 +79,7 @@ class SJobResumeController extends CrudController
                     ],
                 ],
                 'currency' => [
+                    'hidden' => true,
                     'behaviors' => [
                         'SetDefaultCurrencyBehavior' => [
                             'class' => SetDefaultCurrencyBehavior::class,
@@ -99,7 +90,6 @@ class SJobResumeController extends CrudController
                             ],
                         ],
                     ],
-                    'hidden' => true,
                     'relation' => [
                         'attributes' => [
                             'currency_id' => [Currency::class, 'id', 'code'],
@@ -140,11 +130,12 @@ class SJobResumeController extends CrudController
                     'component' => LocationToArrayFieldComponent::class,
                     'buttons' => [
                         [
-                            'hideCondition' => !$this->getTelegramUser()->location_lat || !$this->getTelegramUser()->location_lon,
+                            'hideMode' => !$this->getTelegramUser()->location_lat || !$this->getTelegramUser()->location_lon,
                             'text' => Yii::t('bot', 'MY LOCATION'),
                             'callback' => function (Resume $model) {
                                 $latitude = $this->getTelegramUser()->location_lat;
                                 $longitude = $this->getTelegramUser()->location_lon;
+
                                 if ($latitude && $longitude) {
                                     $model->location_lat = $latitude;
                                     $model->location_lon = $longitude;
@@ -170,6 +161,7 @@ class SJobResumeController extends CrudController
                     ],
                 ],
                 'user_id' => [
+                    'hidden' => true,
                     'behaviors' => [
                         'SetAttributeValueBehavior' => [
                             'class' => SetAttributeValueBehavior::class,
@@ -181,7 +173,6 @@ class SJobResumeController extends CrudController
                             'value' => $this->module->user->id,
                         ],
                     ],
-                    'hidden' => true,
                 ],
             ],
         ];
@@ -194,7 +185,7 @@ class SJobResumeController extends CrudController
      */
     public function actionIndex($page = 1)
     {
-        $this->getState()->setName(null);
+        $this->getState()->setName();
         $user = $this->getUser();
 
         $resumesCount = $user->getResumes()->count();
@@ -287,23 +278,16 @@ class SJobResumeController extends CrudController
     }
 
     /**
-     * @param int $id
+     * @param int|null $id
      *
      * @return array
      */
-    public function actionView($id)
+    public function actionView($id = null)
     {
-        $this->getState()->setName(null);
+        $this->getState()->setName();
         $user = $this->getUser();
 
-        $resume = $user->getResumes()
-            ->where([
-                'user_id' => $user->id,
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($resume)) {
+        if (!$resume = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
@@ -352,6 +336,63 @@ class SJobResumeController extends CrudController
                     'model' => $resume,
                     'keywords' => self::getKeywordsAsString($resume->getKeywordsRelation()->all()),
                     'locationLink' => ExternalLink::getOSMLink($resume->location_lat, $resume->location_lon),
+                ]),
+                $buttons,
+                [
+                    'disablePreview' => true,
+                ]
+            )
+            ->build();
+    }
+
+    /**
+     * @param int $id
+     *
+     * @return array
+     */
+    public function actionUpdate($id = null)
+    {
+        $this->getState()->setName();
+
+        if (!$model = $this->getModel($id)) {
+            return $this->getResponseBuilder()
+                ->answerCallbackQuery()
+                ->build();
+        }
+
+        $buttons = array_map(function (string $attribute) use ($id, $model) {
+            return [
+                [
+                    'text' => Yii::t('bot', $model->getAttributeLabel($attribute)),
+                    'callback_data' => self::createRoute('e-a', [
+                        'id' => $id,
+                        'a' => $attribute,
+                    ]),
+                ],
+            ];
+        }, $this->updateAttributes);
+
+        $buttons[] = [
+            [
+                'text' => Emoji::BACK,
+                'callback_data' => self::createRoute('view', [
+                    'id' => $model->id,
+                ]),
+            ],
+            [
+                'text' => Emoji::DELETE,
+                'callback_data' => self::createRoute('d', [
+                    'id' => $model->id,
+                ]),
+            ],
+        ];
+
+        return $this->getResponseBuilder()
+            ->editMessageTextOrSendMessage(
+                $this->render('view',[
+                    'model' => $model,
+                    'keywords' => self::getKeywordsAsString($model->getKeywordsRelation()->all()),
+                    'locationLink' => ExternalLink::getOSMLink($model->location_lat, $model->location_lon),
                 ]),
                 $buttons,
                 [
@@ -533,19 +574,15 @@ class SJobResumeController extends CrudController
     }
 
     /**
-     * @param int $id
+     * Delete model
+     *
+     * @param int|null $id
      */
-    public function actionDelete($id)
+    public function actionD($id = null)
     {
         $user = $this->getUser();
 
-        $resume = $user->getResumes()
-            ->where([
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($resume)) {
+        if (!$resume = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
@@ -557,21 +594,15 @@ class SJobResumeController extends CrudController
     }
 
     /**
-     * @param int $id
+     * @param int|null $id
      *
      * @return array
      */
-    public function actionSetStatus($id)
+    public function actionSetStatus($id = null)
     {
         $user = $this->getUser();
 
-        $resume = $user->getResumes()
-            ->where([
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($resume)) {
+        if (!$resume = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
@@ -599,12 +630,20 @@ class SJobResumeController extends CrudController
     }
 
     /**
-     * @param integer $id
+     * @param int $id
      *
-     * @return Resume|ActiveRecord
+     * @return ActiveRecord|null
      */
-    protected function getModel($id)
+    public function getModel($id = null)
     {
-        return ($id == null) ? new Resume() : Resume::findOne(['id' => $id, 'user_id' => $this->getUser()->id]);
+        if ($id) {
+            $user = $this->getUser();
+
+            if ($model = $user->getResume($id)) {
+                return $model;
+            }
+        }
+
+        return null;
     }
 }

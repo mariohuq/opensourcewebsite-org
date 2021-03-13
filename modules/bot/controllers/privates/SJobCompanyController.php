@@ -32,13 +32,6 @@ class SJobCompanyController extends CrudController
     {
         return [
             'model' => Company::class,
-            'prepareViewParams' => function ($params) {
-                $model = $params['model'] ?? null;
-
-                return [
-                    'model' => $model,
-                ];
-            },
             'relation' => [
                 'model' => CompanyUser::class,
                 'attributes' => [
@@ -71,7 +64,7 @@ class SJobCompanyController extends CrudController
      */
     public function actionIndex($page = 1)
     {
-        $this->getState()->setName(null);
+        $this->getState()->setName();
         $user = $this->getUser();
 
         $companiesCount = $user->getCompanies()->count();
@@ -132,22 +125,16 @@ class SJobCompanyController extends CrudController
     }
 
     /**
-     * @param int $id
+     * @param int|null $id
      *
      * @return array
      */
-    public function actionView($id)
+    public function actionView($id = null)
     {
-        $this->getState()->setName(null);
+        $this->getState()->setName();
         $user = $this->getUser();
 
-        $company = $user->getCompanies()
-            ->where([
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($company)) {
+        if (!$company = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
@@ -193,18 +180,69 @@ class SJobCompanyController extends CrudController
 
     /**
      * @param int $id
+     *
+     * @return array
      */
-    public function actionDelete($id)
+    public function actionUpdate($id = null)
+    {
+        $this->getState()->setName();
+
+        if (!$model = $this->getModel($id)) {
+            return $this->getResponseBuilder()
+                ->answerCallbackQuery()
+                ->build();
+        }
+
+        $buttons = array_map(function (string $attribute) use ($id, $model) {
+            return [
+                [
+                    'text' => Yii::t('bot', $model->getAttributeLabel($attribute)),
+                    'callback_data' => self::createRoute('e-a', [
+                        'id' => $id,
+                        'a' => $attribute,
+                    ]),
+                ],
+            ];
+        }, $this->updateAttributes);
+
+        $buttons[] = [
+            [
+                'text' => Emoji::BACK,
+                'callback_data' => self::createRoute('view', [
+                    'id' => $model->id,
+                ]),
+            ],
+            [
+                'text' => Emoji::DELETE,
+                'callback_data' => self::createRoute('d', [
+                    'id' => $model->id,
+                ]),
+            ],
+        ];
+
+        return $this->getResponseBuilder()
+            ->editMessageTextOrSendMessage(
+                $this->render('view',[
+                    'model' => $model,
+                ]),
+                $buttons,
+                [
+                    'disablePreview' => true,
+                ]
+            )
+            ->build();
+    }
+
+    /**
+     * Delete model
+     *
+     * @param int|null $id
+     */
+    public function actionD($id = null)
     {
         $user = $this->getUser();
 
-        $company = $user->getCompanies()
-            ->where([
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($company)) {
+        if (!$company = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
@@ -216,12 +254,20 @@ class SJobCompanyController extends CrudController
     }
 
     /**
-     * @param array $id
+     * @param int $id
      *
-     * @return Company|ActiveRecord
+     * @return ActiveRecord|null
      */
-    protected function getModel($id)
+    public function getModel($id = null)
     {
-        return ($id == null) ? new Company() : Company::findOne($id);
+        if ($id) {
+            $user = $this->getUser();
+
+            if ($model = $user->getCompany($id)) {
+                return $model;
+            }
+        }
+
+        return null;
     }
 }

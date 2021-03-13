@@ -21,40 +21,27 @@ class IntermediateFieldService
     public $state;
 
     /**
-     * @param string $modelName $this->getModelName()
      * @param string|array $attributeName
-     * @param string|array $value
+     * @param $value
      */
-    public function set($modelName, $attributeName, $value = '')
+    public function set($attributeName, $value = '')
     {
-        if (is_array($attributeName) && !$value) {
-            $this->setArray($modelName, $attributeName);
+        if (is_array($attributeName)) {
+            $this->state->setIntermediateFields($attributeName);
         } else {
-            $this->state->setIntermediateField($this->createName($modelName, $attributeName), $value);
+            $this->state->setIntermediateField($attributeName, $value);
         }
     }
 
     /**
-     * @param string $modelName
      * @param string $attributeName
      * @param null $defaultValue
      *
      * @return mixed|null
      */
-    public function get($modelName, $attributeName, $defaultValue = null)
+    public function get($attributeName, $defaultValue = null)
     {
-        $name = $this->createName($modelName, $attributeName);
-
-        return $this->state->getIntermediateField($name, $defaultValue);
-    }
-
-    /**
-     * @param string $modelName
-     * @param array $values
-     */
-    private function setArray($modelName, $values)
-    {
-        $this->state->setIntermediateFields($this->createName($modelName, $values));
+        return $this->state->getIntermediateField($attributeName, $defaultValue);
     }
 
     public function reset()
@@ -66,26 +53,6 @@ class IntermediateFieldService
         $this->controller->backRoute->set($backRoute);
         $this->controller->endRoute->set($endRoute);
         $this->state->setIntermediateField(self::SAFE_ATTRIBUTE, $safeAttribute);
-    }
-
-    /**
-     * @param string $modelName
-     * @param string|array $fieldName
-     *
-     * @return string|array
-     */
-    public function createName($modelName, $fieldName)
-    {
-        if (is_array($fieldName)) {
-            $names = [];
-            foreach ($fieldName as $key => $item) {
-                $names[$this->createName($modelName, $key)] = $item;
-            }
-
-            return $names;
-        }
-
-        return $modelName . $fieldName;
     }
 
     /**

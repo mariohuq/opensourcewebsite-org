@@ -85,7 +85,7 @@ class MyBirthdayController extends Controller
             $user->birthday = Yii::$app->formatter->format($text, 'date');
             $user->save();
 
-            $this->getState()->setName(null);
+            $this->getState()->setName();
 
             return $this->actionIndex();
         }

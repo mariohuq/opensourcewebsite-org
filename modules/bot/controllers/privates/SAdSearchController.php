@@ -49,21 +49,13 @@ class SAdSearchController extends CrudController
     {
         return [
             'model' => AdSearch::class,
-            'prepareViewParams' => function ($params) {
-                $model = $params['model'] ?? null;
-
-                return [
-                    'model' => $model,
-                    'keywords' => self::getKeywordsAsString($model->getKeywords()->all()),
-                    'locationLink' => ExternalLink::getOSMLink($model->location_lat, $model->location_lon),
-                ];
-            },
             'attributes' => [
                 'title' => [],
                 'description' => [
                     'isRequired' => false,
                 ],
                 'section' => [
+                    'hidden' => true,
                     'behaviors' => [
                         'SetAttributeValueBehavior' => [
                             'class' => SetAttributeValueBehavior::class,
@@ -76,7 +68,6 @@ class SAdSearchController extends CrudController
                                 ->getIntermediateField(IntermediateFieldService::SAFE_ATTRIBUTE),
                         ],
                     ],
-                    'hidden' => true,
                 ],
                 'keywords' => [
                     //'enableAddButton' = true,
@@ -97,6 +88,7 @@ class SAdSearchController extends CrudController
                     ],
                 ],
                 'currency' => [
+                    'hidden' => true,
                     'behaviors' => [
                         'SetDefaultCurrencyBehavior' => [
                             'class' => SetDefaultCurrencyBehavior::class,
@@ -107,7 +99,6 @@ class SAdSearchController extends CrudController
                             ],
                         ],
                     ],
-                    'hidden' => true,
                     'relation' => [
                         'attributes' => [
                             'currency_id' => [Currency::class, 'id', 'code'],
@@ -127,11 +118,12 @@ class SAdSearchController extends CrudController
                     'component' => LocationToArrayFieldComponent::class,
                     'buttons' => [
                         [
-                            'hideCondition' => !$this->getTelegramUser()->location_lat || !$this->getTelegramUser()->location_lon,
+                            'hideMode' => !$this->getTelegramUser()->location_lat || !$this->getTelegramUser()->location_lon,
                             'text' => Yii::t('bot', 'MY LOCATION'),
                             'callback' => function (AdSearch $model) {
                                 $latitude = $this->getTelegramUser()->location_lat;
                                 $longitude = $this->getTelegramUser()->location_lon;
+
                                 if ($latitude && $longitude) {
                                     $model->location_lat = $latitude;
                                     $model->location_lon = $longitude;
@@ -157,6 +149,7 @@ class SAdSearchController extends CrudController
                     ],
                 ],
                 'user_id' => [
+                    'hidden' => true,
                     'behaviors' => [
                         'SetAttributeValueBehavior' => [
                             'class' => SetAttributeValueBehavior::class,
@@ -168,7 +161,6 @@ class SAdSearchController extends CrudController
                             'value' => $this->module->user->id,
                         ],
                     ],
-                    'hidden' => true,
                 ],
             ],
         ];
@@ -182,7 +174,7 @@ class SAdSearchController extends CrudController
      */
     public function actionIndex($adSection, $page = 1)
     {
-        $this->getState()->setName(null);
+        $this->getState()->setName();
         $this->getState()->setIntermediateField(IntermediateFieldService::SAFE_ATTRIBUTE, $adSection);
         $user = $this->getUser();
 
@@ -288,23 +280,16 @@ class SAdSearchController extends CrudController
     }
 
     /**
-     * @param int $id
+     * @param int|null $id
      *
      * @return array
      */
-    public function actionView($id)
+    public function actionView($id = null)
     {
-        $this->getState()->setName(null);
+        $this->getState()->setName();
         $user = $this->getUser();
 
-        $adSearch = $user->getAdSearches()
-            ->where([
-                'user_id' => $user->id,
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($adSearch)) {
+        if (!$adSearch = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
@@ -369,32 +354,56 @@ class SAdSearchController extends CrudController
      *
      * @return array
      */
-    public function actionSetStatus($id)
+    public function actionUpdate($id = null)
     {
-        $user = $this->getUser();
+        $this->getState()->setName();
 
-        $adSearch = $user->getAdSearches()
-            ->where([
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($adSearch)) {
+        if (!$model = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
         }
 
-        $this->backRoute->make('view', compact('id'));
-        $this->endRoute->make('view', compact('id'));
+        $buttons = array_map(function (string $attribute) use ($id, $model) {
+            return [
+                [
+                    'text' => Yii::t('bot', $model->getAttributeLabel($attribute)),
+                    'callback_data' => self::createRoute('e-a', [
+                        'id' => $id,
+                        'a' => $attribute,
+                    ]),
+                ],
+            ];
+        }, $this->updateAttributes);
 
-        $adSearch->setAttributes([
-            'status' => ($adSearch->isActive() ? AdSearch::STATUS_OFF : AdSearch::STATUS_ON),
-        ]);
+        $buttons[] = [
+            [
+                'text' => Emoji::BACK,
+                'callback_data' => self::createRoute('view', [
+                    'id' => $model->id,
+                ]),
+            ],
+            [
+                'text' => Emoji::DELETE,
+                'callback_data' => self::createRoute('d', [
+                    'id' => $model->id,
+                ]),
+            ],
+        ];
 
-        $adSearch->save();
-
-        return $this->actionView($adSearch->id);
+        return $this->getResponseBuilder()
+            ->editMessageTextOrSendMessage(
+                $this->render('view',[
+                    'model' => $model,
+                    'keywords' => self::getKeywordsAsString($model->getKeywords()->all()),
+                    'locationLink' => ExternalLink::getOSMLink($model->location_lat, $model->location_lon),
+                ]),
+                $buttons,
+                [
+                    'disablePreview' => true,
+                ]
+            )
+            ->build();
     }
 
     /**
@@ -565,19 +574,15 @@ class SAdSearchController extends CrudController
     }
 
     /**
-     * @param int $id
+     * Delete model
+     *
+     * @param int|null $id
      */
-    public function actionDelete($id)
+    public function actionD($id = null)
     {
         $user = $this->getUser();
 
-        $adSearch = $user->getAdSearches()
-            ->where([
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($adSearch)) {
+        if (!$adSearch = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
@@ -589,5 +594,50 @@ class SAdSearchController extends CrudController
         $adSearch->delete();
 
         return $this->actionIndex($adSection);
+    }
+
+    /**
+     * @param int $id
+     *
+     * @return array
+     */
+    public function actionSetStatus($id)
+    {
+        $user = $this->getUser();
+
+        if (!$adSearch = $this->getModel($id)) {
+            return $this->getResponseBuilder()
+                ->answerCallbackQuery()
+                ->build();
+        }
+
+        $this->backRoute->make('view', compact('id'));
+        $this->endRoute->make('view', compact('id'));
+
+        $adSearch->setAttributes([
+            'status' => ($adSearch->isActive() ? AdSearch::STATUS_OFF : AdSearch::STATUS_ON),
+        ]);
+
+        $adSearch->save();
+
+        return $this->actionView($adSearch->id);
+    }
+
+    /**
+     * @param int $id
+     *
+     * @return ActiveRecord|null
+     */
+    public function getModel($id = null)
+    {
+        if ($id) {
+            $user = $this->getUser();
+
+            if ($model = $user->getAdSearch($id)) {
+                return $model;
+            }
+        }
+
+        return null;
     }
 }

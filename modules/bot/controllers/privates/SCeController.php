@@ -11,7 +11,6 @@ use app\modules\bot\components\crud\rules\LocationToArrayFieldComponent;
 use app\modules\bot\components\crud\services\IntermediateFieldService;
 use app\modules\bot\validators\RadiusValidator;
 use app\modules\bot\components\helpers\Emoji;
-use app\modules\bot\components\helpers\ExternalLink;
 use app\models\User;
 use app\models\Currency;
 use app\models\CurrencyExchangeOrder;
@@ -30,13 +29,6 @@ use yii\db\ActiveRecord;
  */
 class SCeController extends CrudController
 {
-    protected $updateAttributes = [
-        'sellingCurrency',
-        'buyingCurrency',
-        'location',
-        'delivery_radius',
-    ];
-
     /**
      * {@inheritdoc}
      */
@@ -44,21 +36,6 @@ class SCeController extends CrudController
     {
         return [
             'model' => CurrencyExchangeOrder::class,
-            'prepareViewParams' => function ($params) {
-                /** @var Vacancy $model */
-                $model = $params['model'] ?? null;
-
-                return [
-                    'model' => $model,
-                    'locationLink' => ExternalLink::getOSMLink($model->location_lat, $model->location_lon),
-                    'sellingPaymentMethods' => array_map(function ($paymentMethod) {
-                        return $paymentMethod->getLabel();
-                    }, $model->sellingPaymentMethods),
-                    'buyingPaymentMethods' => array_map(function ($paymentMethod) {
-                        return $paymentMethod->getLabel();
-                    }, $model->buyingPaymentMethods),
-                ];
-            },
             'create' => [
                 'sellingCurrency',
                 'buyingCurrency',
@@ -72,34 +49,6 @@ class SCeController extends CrudController
                 'location',
                 'delivery_radius',
                 'user_id',
-            ],
-            'edit' => [
-                [
-                    'text' => function (CurrencyExchangeOrder $model) {
-                        return $model->sellingCurrency->code;
-                    },
-                    'buttons' => [
-                        'selling_currency_min_amount',
-                        'selling_currency_max_amount',
-                        'selling_cash_on',
-                        'sellingPaymentMethods',
-                    ],
-                ],
-                [
-                    'text' => function (CurrencyExchangeOrder $model) {
-                        return $model->buyingCurrency->code;
-                    },
-                    'buttons' => [
-                        'buying_cash_on',
-                        'buyingPaymentMethods',
-                    ],
-                ],
-                'location' => [
-                    'hideCondition' => !$this->getTelegramUser()->location_lat || !$this->getTelegramUser()->location_lon,
-                ],
-                'delivery_radius' => [
-                    'hideCondition' => !$this->getTelegramUser()->location_lat || !$this->getTelegramUser()->location_lon,
-                ],
             ],
             'attributes' => [
                 'sellingCurrency' => [
@@ -149,7 +98,6 @@ class SCeController extends CrudController
                     'isRequired' => false,
                 ],
                 'selling_cash_on' => [
-                    'isRequired' => false,
                     'buttons' => [
                         [
                             'text' => Yii::t('bot', 'YES'),
@@ -193,7 +141,6 @@ class SCeController extends CrudController
                     ],
                 ],
                 'buying_cash_on' => [
-                    'isRequired' => false,
                     'buttons' => [
                         [
                             'text' => Yii::t('bot', 'YES'),
@@ -241,11 +188,12 @@ class SCeController extends CrudController
                     'component' => LocationToArrayFieldComponent::class,
                     'buttons' => [
                         [
-                            'hideCondition' => !$this->getTelegramUser()->location_lat || !$this->getTelegramUser()->location_lon,
+                            'hideMode' => !$this->getTelegramUser()->location_lat || !$this->getTelegramUser()->location_lon,
                             'text' => Yii::t('bot', 'MY LOCATION'),
                             'callback' => function (CurrencyExchangeOrder $model) {
                                 $latitude = $this->getTelegramUser()->location_lat;
                                 $longitude = $this->getTelegramUser()->location_lon;
+
                                 if ($latitude && $longitude) {
                                     $model->location_lat = $latitude;
                                     $model->location_lon = $longitude;
@@ -271,10 +219,11 @@ class SCeController extends CrudController
                     ],
                 ],
                 'cross_rate_on' => [
-                    'isRequired' => false,
                     'hidden' => true,
+                    'isRequired' => false,
                 ],
                 'user_id' => [
+                    'hidden' => true,
                     'behaviors' => [
                         'SetAttributeValueBehavior' => [
                             'class' => SetAttributeValueBehavior::class,
@@ -286,7 +235,6 @@ class SCeController extends CrudController
                             'value' => $this->module->user->id,
                         ],
                     ],
-                    'hidden' => true,
                 ],
             ],
         ];
@@ -299,7 +247,7 @@ class SCeController extends CrudController
      */
     public function actionIndex($page = 1)
     {
-        $this->getState()->setName(null);
+        $this->getState()->setName();
         $user = $this->getUser();
 
         $orderQuery = CurrencyExchangeOrder::find()
@@ -390,24 +338,19 @@ class SCeController extends CrudController
     }
 
     /**
-     * @param int $id
+     * @param int|null $id
      *
      * @return array
      */
     public function actionView($id = null)
     {
-        $this->getState()->setName(null);
+        $this->getState()->setName();
         $user = $this->getUser();
 
-        $order = $user->getCurrencyExchangeOrders()
-            ->where([
-                'user_id' => $user->id,
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($order)) {
-            return [];
+        if (!$order = $this->getModel($id)) {
+            return $this->getResponseBuilder()
+                ->answerCallbackQuery()
+                ->build();
         }
 
         $buttons[] = [
@@ -471,13 +414,222 @@ class SCeController extends CrudController
             ->editMessageTextOrSendMessage(
                 $this->render('view', [
                     'model' => $order,
-                    'locationLink' => ExternalLink::getOSMLink($order->location_lat, $order->location_lon),
-                    'sellingPaymentMethods' => array_map(function ($paymentMethod) {
-                        return $paymentMethod->getLabel();
-                    }, $order->sellingPaymentMethods),
-                    'buyingPaymentMethods' => array_map(function ($paymentMethod) {
-                        return $paymentMethod->getLabel();
-                    }, $order->buyingPaymentMethods),
+                ]),
+                $buttons,
+                [
+                    'disablePreview' => true,
+                ]
+            )
+            ->build();
+    }
+
+    /**
+     * @param int|null $id
+     *
+     * @return array
+     */
+    public function actionUpdate($id = null)
+    {
+        $this->getState()->setName();
+
+        if (!$model = $this->getModel($id)) {
+            return $this->getResponseBuilder()
+                ->answerCallbackQuery()
+                ->build();
+        }
+
+        $buttons[] = [
+            [
+                'text' => $model->sellingCurrency->code,
+                'callback_data' => self::createRoute('update-2-1', [
+                    'id' => $model->id,
+                ]),
+            ],
+            [
+                'text' => $model->buyingCurrency->code,
+                'callback_data' => self::createRoute('update-2-2', [
+                    'id' => $model->id,
+                ]),
+            ],
+        ];
+
+        if ($model->selling_cash_on || $model->buying_cash_on) {
+            $buttons[] = [
+                [
+                    'text' => Yii::t('bot', $model->getAttributeLabel('location')),
+                    'callback_data' => self::createRoute('e-a', [
+                        'id' => $model->id,
+                        'a' => 'location',
+                    ]),
+                ],
+            ];
+
+            $buttons[] = [
+                [
+                    'text' => Yii::t('bot', $model->getAttributeLabel('delivery_radius')),
+                    'callback_data' => self::createRoute('e-a', [
+                        'id' => $model->id,
+                        'a' => 'delivery_radius',
+                    ]),
+                ],
+            ];
+        }
+
+        $buttons[] = [
+            [
+                'text' => Emoji::BACK,
+                'callback_data' => self::createRoute('view', [
+                    'id' => $model->id,
+                ]),
+            ],
+            [
+                'text' => Emoji::DELETE,
+                'callback_data' => self::createRoute('d', [
+                    'id' => $model->id,
+                ]),
+            ],
+        ];
+
+        return $this->getResponseBuilder()
+            ->editMessageTextOrSendMessage(
+                $this->render('view', [
+                    'model' => $model,
+                ]),
+                $buttons,
+                [
+                    'disablePreview' => true,
+                ]
+            )
+            ->build();
+    }
+
+    /**
+     * @param int|null $id
+     *
+     * @return array
+     */
+    public function actionUpdate21($id = null)
+    {
+        $this->getState()->setName();
+        $user = $this->getUser();
+
+        if (!$order = $this->getModel($id)) {
+            return $this->getResponseBuilder()
+                ->answerCallbackQuery()
+                ->build();
+        }
+
+        $buttons[] = [
+            [
+                'text' => Yii::t('bot', $order->getAttributeLabel('selling_currency_min_amount')) . ': ' . $order->getSellingCurrencyMinAmount(),
+                'callback_data' => self::createRoute('e-a', [
+                    'id' => $order->id,
+                    'a' => 'selling_currency_min_amount',
+                ]),
+            ],
+        ];
+
+        $buttons[] = [
+            [
+                'text' => Yii::t('bot', $order->getAttributeLabel('selling_currency_max_amount')) . ': ' . $order->getSellingCurrencyMaxAmount(),
+                'callback_data' => self::createRoute('e-a', [
+                    'id' => $order->id,
+                    'a' => 'selling_currency_max_amount',
+                ]),
+            ],
+        ];
+
+        $buttons[] = [
+            [
+                'text' => Yii::t('bot', $order->getAttributeLabel('selling_cash_on')),
+                'callback_data' => self::createRoute('e-a', [
+                    'id' => $order->id,
+                    'a' => 'selling_cash_on',
+                ]),
+            ],
+        ];
+
+        $buttons[] = [
+            [
+                'text' => Yii::t('bot', 'Payment methods'),
+                'callback_data' => self::createRoute('e-a', [
+                    'id' => $order->id,
+                    'a' => 'sellingPaymentMethods',
+                ]),
+            ],
+        ];
+
+        $buttons[] = [
+            [
+                'text' => Emoji::BACK,
+                'callback_data' => self::createRoute('update', [
+                    'id' => $order->id,
+                ]),
+            ],
+        ];
+
+        return $this->getResponseBuilder()
+            ->editMessageTextOrSendMessage(
+                $this->render('view', [
+                    'model' => $order,
+                ]),
+                $buttons,
+                [
+                    'disablePreview' => true,
+                ]
+            )
+            ->build();
+    }
+
+    /**
+     * @param int|null $id
+     *
+     * @return array
+     */
+    public function actionUpdate22($id = null)
+    {
+        $this->getState()->setName();
+        $user = $this->getUser();
+
+        if (!$order = $this->getModel($id)) {
+            return $this->getResponseBuilder()
+                ->answerCallbackQuery()
+                ->build();
+        }
+
+        $buttons[] = [
+            [
+                'text' => Yii::t('bot', $order->getAttributeLabel('buying_cash_on')),
+                'callback_data' => self::createRoute('e-a', [
+                    'id' => $order->id,
+                    'a' => 'buying_cash_on',
+                ]),
+            ],
+        ];
+
+        $buttons[] = [
+            [
+                'text' => Yii::t('bot', 'Payment methods'),
+                'callback_data' => self::createRoute('e-a', [
+                    'id' => $order->id,
+                    'a' => 'buyingPaymentMethods',
+                ]),
+            ],
+        ];
+
+        $buttons[] = [
+            [
+                'text' => Emoji::BACK,
+                'callback_data' => self::createRoute('update', [
+                    'id' => $order->id,
+                ]),
+            ],
+        ];
+
+        return $this->getResponseBuilder()
+            ->editMessageTextOrSendMessage(
+                $this->render('view', [
+                    'model' => $order,
                 ]),
                 $buttons,
                 [
@@ -1195,21 +1347,18 @@ class SCeController extends CrudController
     }
 
     /**
-     * @param int $id
+     * Delete model
+     *
+     * @param int|null $id
      */
-    public function actionDelete($id)
+    public function actionD($id = null)
     {
         $user = $this->getUser();
 
-        $order = $user->getCurrencyExchangeOrders()
-            ->where([
-                'user_id' => $user->id,
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($order)) {
-            return [];
+        if (!$order = $this->getModel($id)) {
+            return $this->getResponseBuilder()
+                ->answerCallbackQuery()
+                ->build();
         }
 
         $order->delete();
@@ -1218,22 +1367,15 @@ class SCeController extends CrudController
     }
 
     /**
-     * @param int $id
+     * @param int|null $id
      *
      * @return array
      */
-    public function actionSetStatus($id)
+    public function actionSetStatus($id = null)
     {
         $user = $this->getUser();
 
-        $order = $user->getCurrencyExchangeOrders()
-            ->where([
-                'user_id' => $user->id,
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($order)) {
+        if (!$order = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
@@ -1258,5 +1400,23 @@ class SCeController extends CrudController
         $order->save();
 
         return $this->actionView($order->id);
+    }
+
+    /**
+     * @param int $id
+     *
+     * @return ActiveRecord|null
+     */
+    public function getModel($id = null)
+    {
+        if ($id) {
+            $user = $this->getUser();
+
+            if ($model = $user->getCurrencyExchangeOrder($id)) {
+                return $model;
+            }
+        }
+
+        return null;
     }
 }

@@ -53,21 +53,13 @@ class SAdOfferController extends CrudController
     {
         return [
             'model' => AdOffer::class,
-            'prepareViewParams' => function ($params) {
-                $model = $params['model'] ?? null;
-
-                return [
-                    'model' => $model,
-                    'keywords' => self::getKeywordsAsString($model->getKeywords()->all()),
-                    'locationLink' => ExternalLink::getOSMLink($model->location_lat, $model->location_lon),
-                ];
-            },
             'attributes' => [
                 'title' => [],
                 'description' => [
                     'isRequired' => false,
                 ],
                 'section' => [
+                    'hidden' => true,
                     'behaviors' => [
                         'SetAttributeValueBehavior' => [
                             'class' => SetAttributeValueBehavior::class,
@@ -80,7 +72,6 @@ class SAdOfferController extends CrudController
                                 ->getIntermediateField(IntermediateFieldService::SAFE_ATTRIBUTE),
                         ],
                     ],
-                    'hidden' => true,
                 ],
                 'keywords' => [
                     //'enableAddButton' = true,
@@ -119,6 +110,7 @@ class SAdOfferController extends CrudController
                     ],
                 ],
                 'currency' => [
+                    'hidden' => true,
                     'behaviors' => [
                         'SetDefaultCurrencyBehavior' => [
                             'class' => SetDefaultCurrencyBehavior::class,
@@ -129,7 +121,6 @@ class SAdOfferController extends CrudController
                             ],
                         ],
                     ],
-                    'hidden' => true,
                     'relation' => [
                         'attributes' => [
                             'currency_id' => [Currency::class, 'id', 'code'],
@@ -149,11 +140,12 @@ class SAdOfferController extends CrudController
                     'component' => LocationToArrayFieldComponent::class,
                     'buttons' => [
                         [
-                            'hideCondition' => !$this->getTelegramUser()->location_lat || !$this->getTelegramUser()->location_lon,
+                            'hideMode' => !$this->getTelegramUser()->location_lat || !$this->getTelegramUser()->location_lon,
                             'text' => Yii::t('bot', 'MY LOCATION'),
                             'callback' => function (AdOffer $model) {
                                 $latitude = $this->getTelegramUser()->location_lat;
                                 $longitude = $this->getTelegramUser()->location_lon;
+
                                 if ($latitude && $longitude) {
                                     $model->location_lat = $latitude;
                                     $model->location_lon = $longitude;
@@ -179,6 +171,7 @@ class SAdOfferController extends CrudController
                     ],
                 ],
                 'user_id' => [
+                    'hidden' => true,
                     'behaviors' => [
                         'SetAttributeValueBehavior' => [
                             'class' => SetAttributeValueBehavior::class,
@@ -190,7 +183,6 @@ class SAdOfferController extends CrudController
                             'value' => $this->module->user->id,
                         ],
                     ],
-                    'hidden' => true,
                 ],
             ],
         ];
@@ -204,7 +196,7 @@ class SAdOfferController extends CrudController
      */
     public function actionIndex($adSection, $page = 1)
     {
-        $this->getState()->setName(null);
+        $this->getState()->setName();
         $this->getState()->setIntermediateField(IntermediateFieldService::SAFE_ATTRIBUTE, $adSection);
         $user = $this->getUser();
 
@@ -299,23 +291,16 @@ class SAdOfferController extends CrudController
     }
 
     /**
-     * @param int $id
+     * @param int|null $id
      *
      * @return array
      */
-    public function actionView($id)
+    public function actionView($id = null)
     {
-        $this->getState()->setName(null);
+        $this->getState()->setName();
         $user = $this->getUser();
 
-        $adOffer = $user->getAdOffers()
-            ->where([
-                'user_id' => $user->id,
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($adOffer)) {
+        if (!$adOffer = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
@@ -367,6 +352,63 @@ class SAdOfferController extends CrudController
                     'model' => $adOffer,
                     'keywords' => self::getKeywordsAsString($adOffer->getKeywords()->all()),
                     'locationLink' => ExternalLink::getOSMLink($adOffer->location_lat, $adOffer->location_lon),
+                ]),
+                $buttons,
+                [
+                    'disablePreview' => true,
+                ]
+            )
+            ->build();
+    }
+
+    /**
+     * @param int $id
+     *
+     * @return array
+     */
+    public function actionUpdate($id = null)
+    {
+        $this->getState()->setName();
+
+        if (!$model = $this->getModel($id)) {
+            return $this->getResponseBuilder()
+                ->answerCallbackQuery()
+                ->build();
+        }
+
+        $buttons = array_map(function (string $attribute) use ($id, $model) {
+            return [
+                [
+                    'text' => Yii::t('bot', $model->getAttributeLabel($attribute)),
+                    'callback_data' => self::createRoute('e-a', [
+                        'id' => $id,
+                        'a' => $attribute,
+                    ]),
+                ],
+            ];
+        }, $this->updateAttributes);
+
+        $buttons[] = [
+            [
+                'text' => Emoji::BACK,
+                'callback_data' => self::createRoute('view', [
+                    'id' => $model->id,
+                ]),
+            ],
+            [
+                'text' => Emoji::DELETE,
+                'callback_data' => self::createRoute('d', [
+                    'id' => $model->id,
+                ]),
+            ],
+        ];
+
+        return $this->getResponseBuilder()
+            ->editMessageTextOrSendMessage(
+                $this->render('view',[
+                    'model' => $model,
+                    'keywords' => self::getKeywordsAsString($model->getKeywords()->all()),
+                    'locationLink' => ExternalLink::getOSMLink($model->location_lat, $model->location_lon),
                 ]),
                 $buttons,
                 [
@@ -541,6 +583,41 @@ class SAdOfferController extends CrudController
             ->build();
     }
 
+    private static function getKeywordsAsString($adKeywords)
+    {
+        $keywords = [];
+
+        foreach ($adKeywords as $adKeyword) {
+            $keywords[] = $adKeyword->keyword;
+        }
+
+        return implode(', ', $keywords);
+    }
+
+    /**
+     * Delete model
+     *
+     * @param int|null $id
+     */
+    public function actionD($id = null)
+    {
+        $user = $this->getUser();
+
+        if (!$adOffer = $this->getModel($id)) {
+            return $this->getResponseBuilder()
+                ->answerCallbackQuery()
+                ->build();
+        }
+
+        $adSection = $adOffer->section;
+
+        $adOffer->unlinkAll('photos', true);
+        $adOffer->unlinkAll('keywords', true);
+        $adOffer->delete();
+
+        return $this->actionIndex($adSection);
+    }
+
     /**
      * @param int $id
      *
@@ -550,13 +627,7 @@ class SAdOfferController extends CrudController
     {
         $user = $this->getUser();
 
-        $adOffer = $user->getAdOffers()
-            ->where([
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($adOffer)) {
+        if (!$adOffer = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
@@ -574,42 +645,21 @@ class SAdOfferController extends CrudController
         return $this->actionView($adOffer->id);
     }
 
-    private static function getKeywordsAsString($adKeywords)
-    {
-        $keywords = [];
-
-        foreach ($adKeywords as $adKeyword) {
-            $keywords[] = $adKeyword->keyword;
-        }
-
-        return implode(', ', $keywords);
-    }
-
     /**
      * @param int $id
+     *
+     * @return ActiveRecord|null
      */
-    public function actionDelete($id)
+    public function getModel($id = null)
     {
-        $user = $this->getUser();
+        if ($id) {
+            $user = $this->getUser();
 
-        $adOffer = $user->getAdOffers()
-            ->where([
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($adOffer)) {
-            return $this->getResponseBuilder()
-                ->answerCallbackQuery()
-                ->build();
+            if ($model = $user->getAdOffer($id)) {
+                return $model;
+            }
         }
 
-        $adSection = $adOffer->section;
-
-        $adOffer->unlinkAll('photos', true);
-        $adOffer->unlinkAll('keywords', true);
-        $adOffer->delete();
-
-        return $this->actionIndex($adSection);
+        return null;
     }
 }

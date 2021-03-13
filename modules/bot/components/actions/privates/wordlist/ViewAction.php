@@ -20,7 +20,7 @@ class ViewAction extends BaseAction
     */
     public function run($phraseId = null)
     {
-        $this->getState()->setName(null);
+        $this->getState()->setName();
 
         $phrase = $this->wordModelClass::findOne($phraseId);
 

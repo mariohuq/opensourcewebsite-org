@@ -150,7 +150,7 @@ class GroupGreetingController extends Controller
         $messageSetting->value = $text;
         $messageSetting->save();
 
-        $this->getState()->setName(null);
+        $this->getState()->setName();
 
         return $this->runAction('index', [
             'chatId' => $chatId,

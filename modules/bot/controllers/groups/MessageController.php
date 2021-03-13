@@ -30,7 +30,7 @@ class MessageController extends Controller
                 'chat_id' => $telegramChat->id,
                 'user_id' => $telegramUser->id,
             ]);
-
+            //TODO the message can be deleted by the administrator and getMessageId() is empty
             if (($chatMember->role == JoinCaptchaController::ROLE_UNVERIFIED) && !$chatMember->isAdmin()) {
                 $this->getBotApi()->deleteMessage(
                     $telegramChat->chat_id,

@@ -14,10 +14,10 @@ class PaginationButtons
 {
     /**
      * @param ActiveQuery $query
-     * @param callable    $routeCallback
-     * @param callable    $buttonCallback
-     * @param int         $page
-     * @param int         $pageSize
+     * @param callable $routeCallback
+     * @param callable $buttonCallback
+     * @param int $page
+     * @param int $pageSize
      *
      * @return array
      */
@@ -29,6 +29,7 @@ class PaginationButtons
         int $pageSize = 9
     ) {
         $pagination = self::generatePagination($query->count(), $page, $pageSize);
+
         $items = $query
             ->offset($pagination->offset)
             ->limit($pagination->limit)
@@ -38,11 +39,11 @@ class PaginationButtons
     }
 
     /**
-     * @param array    $items
+     * @param array $items
      * @param callable $routeCallback
      * @param callable $buttonCallback
-     * @param int      $page
-     * @param int      $pageSize
+     * @param int $page
+     * @param int $pageSize
      *
      * @return array
      */
@@ -54,6 +55,7 @@ class PaginationButtons
         int $pageSize = 9
     ) {
         $pagination = self::generatePagination(count($items), $page, $pageSize);
+
         $items = array_slice(
             $items,
             $pagination->offset,
@@ -64,10 +66,10 @@ class PaginationButtons
     }
 
     /**
-     * @param array      $items
-     * @param callable   $routeCallback
-     * @param callable   $buttonCallback
      * @param Pagination $pagination
+     * @param callable $routeCallback
+     * @param array $items
+     * @param callable $buttonCallback
      *
      * @return array
      */
@@ -93,6 +95,7 @@ class PaginationButtons
                 array_keys($items),
                 $items
             );
+
             $buttons = array_filter(
                 $buttons,
                 function ($items) {
@@ -111,19 +114,24 @@ class PaginationButtons
             $currentPage = $pagination->page + 1;
             $previousPage = $currentPage - 1 ?: $pagination->pageCount;
             $nextPage = ($currentPage + 1) <= $pagination->pageCount ? $currentPage + 1 : 1;
+
             $paginationButtons = [];
+
             $paginationButtons[] = [
+                'text' => '<',
                 'callback_data' => $routeCallback($previousPage),
-                'text'          => '<',
             ];
+
             $paginationButtons[] = [
+                'text' => $currentPage . '/' . $pagination->pageCount,
                 'callback_data' => $routeCallback($currentPage),
-                'text'          => $currentPage . '/' . $pagination->pageCount,
             ];
+
             $paginationButtons[] = [
+                'text' => '>',
                 'callback_data' => $routeCallback($nextPage),
-                'text'          => '>',
             ];
+
             if ($buttons) {
                 $buttons = array_merge($buttons, [$paginationButtons]);
             } else {
@@ -145,13 +153,13 @@ class PaginationButtons
     {
         return new Pagination(
             [
-                'totalCount'    => $itemsCount,
-                'pageSize'      => $pageSize,
-                'params'        => [
+                'totalCount' => $itemsCount,
+                'pageSize' => $pageSize,
+                'params' => [
                     'page' => $page,
                 ],
                 'pageSizeParam' => false,
-                'validatePage'  => true,
+                'validatePage' => true,
             ]
         );
     }

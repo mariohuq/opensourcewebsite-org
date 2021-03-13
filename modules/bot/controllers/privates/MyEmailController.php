@@ -70,7 +70,7 @@ class MyEmailController extends Controller
                 $this->getState()->setName('waiting_for_merge');
                 $this->getState()->setIntermediateField('email', $email);
             } else {
-                $this->getState()->setName(null);
+                $this->getState()->setName();
                 return $this->actionIndex();
             }
         } else {
@@ -84,7 +84,7 @@ class MyEmailController extends Controller
             if ($changeEmailRequest->save()) {
                 if ($changeEmailRequest->sendEmail()) {
                     $changeRequest = true;
-                    $this->getState()->setName(null);
+                    $this->getState()->setName();
                 }
             }
         }

@@ -2,6 +2,7 @@
 
 use app\models\CurrencyExchangeOrder;
 use app\modules\bot\components\helpers\Emoji;
+use app\modules\bot\components\helpers\ExternalLink;
 
 ?>
 <b><?= Emoji::CURRENCY_EXCHANGE_ORDER . ' ' . Yii::t('bot', 'Swap') ?>: <?= $model->getTitle() ?></b><br/>
@@ -18,8 +19,8 @@ use app\modules\bot\components\helpers\Emoji;
 <?php if ($model->selling_cash_on) : ?>
 <?= Yii::t('bot', 'Cash') ?><br/>
 <?php endif; ?>
-<?php foreach ($sellingPaymentMethods as $paymentMethod) : ?>
-<?= $paymentMethod ?><br/>
+<?php foreach ($model->sellingPaymentMethods as $paymentMethod) : ?>
+<?= $paymentMethod->getLabel() ?><br/>
 <?php endforeach; ?>
 <br/>
 ————<br/>
@@ -32,15 +33,15 @@ use app\modules\bot\components\helpers\Emoji;
 <?php if ($model->buying_cash_on) : ?>
 <?= Yii::t('bot', 'Cash') ?><br/>
 <?php endif; ?>
-<?php foreach ($buyingPaymentMethods as $paymentMethod) : ?>
-<?= $paymentMethod ?><br/>
+<?php foreach ($model->buyingPaymentMethods as $paymentMethod) : ?>
+<?= $paymentMethod->getLabel() ?><br/>
 <?php endforeach; ?>
 <br/>
 <?php if ($model->selling_cash_on || $model->buying_cash_on) : ?>
 <?php if ($model->location_lat && $model->location_lon) : ?>
 ————<br/>
 <br/>
-<b><?= Yii::t('bot', 'Location') ?>:</b> <a href = "<?= $locationLink ?>"><?= $model->location_lat ?> <?= $model->location_lon ?></a><br/>
+<b><?= Yii::t('bot', 'Location') ?>:</b> <a href = "<?= ExternalLink::getOSMLink($model->location_lat, $model->location_lon) ?>"><?= $model->location_lat ?> <?= $model->location_lon ?></a><br/>
 <br/>
 <?php if ($model->delivery_radius > 0) : ?>
 <b><?= Yii::t('bot', 'Delivery radius') ?>:</b> <?= $model->delivery_radius ?> <?= Yii::t('bot', 'km') ?><br/>

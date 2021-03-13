@@ -776,11 +776,40 @@ class User extends ActiveRecord implements IdentityInterface
     }
 
     /**
+     * @param int $id
+     *
+     * @return \yii\db\ActiveQuery
+     */
+    public function getCompany($id)
+    {
+        return $this->hasOne(Company::class, ['id' => 'company_id'])
+            ->andWhere([
+                'id' => $id,
+            ])
+            ->viaTable('company_user', ['user_id' => 'id'])
+            ->one();
+    }
+
+    /**
      * @return \yii\db\ActiveQuery
      */
     public function getVacancies()
     {
         return $this->hasMany(Vacancy::class, ['user_id' => 'id']);
+    }
+
+    /**
+     * @param int $id
+     *
+     * @return \yii\db\ActiveQuery
+     */
+    public function getVacancy($id)
+    {
+        return $this->hasOne(Vacancy::class, ['user_id' => 'id'])
+            ->andWhere([
+                'id' => $id,
+            ])
+            ->one();
     }
 
     /**
@@ -792,6 +821,20 @@ class User extends ActiveRecord implements IdentityInterface
     }
 
     /**
+     * @param int $id
+     *
+     * @return \yii\db\ActiveQuery
+     */
+    public function getResume($id)
+    {
+        return $this->hasOne(Resume::class, ['user_id' => 'id'])
+            ->andWhere([
+                'id' => $id,
+            ])
+            ->one();
+    }
+
+    /**
      * @return \yii\db\ActiveQuery
      */
     public function getAdSearches()
@@ -800,11 +843,39 @@ class User extends ActiveRecord implements IdentityInterface
     }
 
     /**
+     * @param int $id
+     *
+     * @return \yii\db\ActiveQuery
+     */
+    public function getAdSearch($id)
+    {
+        return $this->hasOne(AdSearch::class, ['user_id' => 'id'])
+            ->andWhere([
+                'id' => $id,
+            ])
+            ->one();
+    }
+
+    /**
      * @return \yii\db\ActiveQuery
      */
     public function getAdOffers()
     {
         return $this->hasMany(AdOffer::class, ['user_id' => 'id']);
+    }
+
+    /**
+     * @param int $id
+     *
+     * @return \yii\db\ActiveQuery
+     */
+    public function getAdOffer($id)
+    {
+        return $this->hasOne(AdOffer::class, ['user_id' => 'id'])
+            ->andWhere([
+                'id' => $id,
+            ])
+            ->one();
     }
 
     /**

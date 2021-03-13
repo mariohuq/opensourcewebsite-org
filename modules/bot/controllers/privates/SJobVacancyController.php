@@ -53,20 +53,6 @@ class SJobVacancyController extends CrudController
     {
         return [
             'model' => Vacancy::class,
-            'prepareViewParams' => function ($params) {
-                /** @var Vacancy $model */
-                $model = $params['model'] ?? null;
-
-                return [
-                    'model' => $model,
-                    'company' => $model->company,
-                    'keywords' => self::getKeywordsAsString($model->getKeywordsRelation()->all()),
-                    'locationLink' => ExternalLink::getOSMLink($model->location_lat, $model->location_lon),
-                    'languages' => array_map(function ($vacancyLanguage) {
-                        return $vacancyLanguage->getLabel();
-                    }, $model->vacancyLanguagesRelation),
-                ];
-            },
             'attributes' => [
                 'name' => [],
                 'responsibilities' => [],
@@ -115,6 +101,7 @@ class SJobVacancyController extends CrudController
                     ],
                 ],
                 'currency' => [
+                    'hidden' => true,
                     'behaviors' => [
                         'SetDefaultCurrencyBehavior' => [
                             'class' => SetDefaultCurrencyBehavior::class,
@@ -125,7 +112,6 @@ class SJobVacancyController extends CrudController
                             ],
                         ],
                     ],
-                    'hidden' => true,
                     'relation' => [
                         'attributes' => [
                             'currency_id' => [Currency::class, 'id', 'code'],
@@ -166,11 +152,12 @@ class SJobVacancyController extends CrudController
                     'component' => LocationToArrayFieldComponent::class,
                     'buttons' => [
                         [
-                            'hideCondition' => !$this->getTelegramUser()->location_lat || !$this->getTelegramUser()->location_lon,
+                            'hideMode' => !$this->getTelegramUser()->location_lat || !$this->getTelegramUser()->location_lon,
                             'text' => Yii::t('bot', 'MY LOCATION'),
                             'callback' => function (Vacancy $model) {
                                 $latitude = $this->getTelegramUser()->location_lat;
                                 $longitude = $this->getTelegramUser()->location_lon;
+
                                 if ($latitude && $longitude) {
                                     $model->location_lat = $latitude;
                                     $model->location_lon = $longitude;
@@ -184,6 +171,7 @@ class SJobVacancyController extends CrudController
                     ],
                 ],
                 'company_id' => [
+                    'hidden' => true,
                     'behaviors' => [
                         'SetAttributeValueBehavior' => [
                             'class' => SetAttributeValueBehavior::class,
@@ -196,9 +184,9 @@ class SJobVacancyController extends CrudController
                                 ->getIntermediateField(IntermediateFieldService::SAFE_ATTRIBUTE),
                         ],
                     ],
-                    'hidden' => true,
                 ],
                 'user_id' => [
+                    'hidden' => true,
                     'behaviors' => [
                         'SetAttributeValueBehavior' => [
                             'class' => SetAttributeValueBehavior::class,
@@ -210,7 +198,6 @@ class SJobVacancyController extends CrudController
                             'value' => $this->module->user->id,
                         ],
                     ],
-                    'hidden' => true,
                 ],
             ],
         ];
@@ -224,7 +211,7 @@ class SJobVacancyController extends CrudController
      */
     public function actionIndex($companyId = null, $page = 1)
     {
-        $this->getState()->setName(null);
+        $this->getState()->setName();
         $this->getState()->setIntermediateField(IntermediateFieldService::SAFE_ATTRIBUTE, $companyId);
         $user = $this->getUser();
 
@@ -330,23 +317,16 @@ class SJobVacancyController extends CrudController
     }
 
     /**
-     * @param int $id
+     * @param int|null $id
      *
      * @return array
      */
-    public function actionView($id)
+    public function actionView($id = null)
     {
-        $this->getState()->setName(null);
+        $this->getState()->setName();
         $user = $this->getUser();
 
-        $vacancy = $user->getVacancies()
-            ->where([
-                'user_id' => $user->id,
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($vacancy)) {
+        if (!$vacancy = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
@@ -410,6 +390,67 @@ class SJobVacancyController extends CrudController
                     'languages' => array_map(function ($vacancyLanguage) {
                         return $vacancyLanguage->getLabel();
                     }, $vacancy->vacancyLanguagesRelation),
+                ]),
+                $buttons,
+                [
+                    'disablePreview' => true,
+                ]
+            )
+            ->build();
+    }
+
+    /**
+     * @param int $id
+     *
+     * @return array
+     */
+    public function actionUpdate($id = null)
+    {
+        $this->getState()->setName();
+
+        if (!$model = $this->getModel($id)) {
+            return $this->getResponseBuilder()
+                ->answerCallbackQuery()
+                ->build();
+        }
+
+        $buttons = array_map(function (string $attribute) use ($id, $model) {
+            return [
+                [
+                    'text' => Yii::t('bot', $model->getAttributeLabel($attribute)),
+                    'callback_data' => self::createRoute('e-a', [
+                        'id' => $id,
+                        'a' => $attribute,
+                    ]),
+                ],
+            ];
+        }, $this->updateAttributes);
+
+        $buttons[] = [
+            [
+                'text' => Emoji::BACK,
+                'callback_data' => self::createRoute('view', [
+                    'id' => $model->id,
+                ]),
+            ],
+            [
+                'text' => Emoji::DELETE,
+                'callback_data' => self::createRoute('d', [
+                    'id' => $model->id,
+                ]),
+            ],
+        ];
+
+        return $this->getResponseBuilder()
+            ->editMessageTextOrSendMessage(
+                $this->render('view',[
+                    'model' => $model,
+                    'company' => $model->company,
+                    'keywords' => self::getKeywordsAsString($model->getKeywordsRelation()->all()),
+                    'locationLink' => ExternalLink::getOSMLink($model->location_lat, $model->location_lon),
+                    'languages' => array_map(function ($vacancyLanguage) {
+                        return $vacancyLanguage->getLabel();
+                    }, $model->vacancyLanguagesRelation),
                 ]),
                 $buttons,
                 [
@@ -597,19 +638,15 @@ class SJobVacancyController extends CrudController
     }
 
     /**
-     * @param int $id
+     * Delete model
+     *
+     * @param int|null $id
      */
-    public function actionDelete($id)
+    public function actionD($id = null)
     {
         $user = $this->getUser();
 
-        $vacancy = $user->getVacancies()
-            ->where([
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($vacancy)) {
+        if (!$vacancy = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
@@ -625,21 +662,15 @@ class SJobVacancyController extends CrudController
     }
 
     /**
-     * @param int $id
+     * @param int|null $id
      *
      * @return array
      */
-    public function actionSetStatus($id)
+    public function actionSetStatus($id = null)
     {
         $user = $this->getUser();
 
-        $vacancy = $user->getVacancies()
-            ->where([
-                'id' => $id,
-            ])
-            ->one();
-
-        if (!isset($vacancy)) {
+        if (!$vacancy = $this->getModel($id)) {
             return $this->getResponseBuilder()
                 ->answerCallbackQuery()
                 ->build();
@@ -666,13 +697,29 @@ class SJobVacancyController extends CrudController
         return $this->actionView($vacancy->id);
     }
 
-    protected function getModel($id)
+    /**
+     * @param int $id
+     *
+     * @return ActiveRecord|null
+     */
+    public function getModel($id = null)
     {
-        return !is_null($id)
-            ? Vacancy::findOne($id)
-            : new Vacancy([
-                'company_id' => $this->getState()->getIntermediateField('companyId', null),
-                'currency_id' => Currency::findOne(['code' => 'USD'])->id,
-            ]);
+        if ($id) {
+            $user = $this->getUser();
+
+            if ($model = $user->getVacancy($id)) {
+                return $model;
+            }
+        }
+
+        return null;
+    }
+
+    public function getNewModel()
+    {
+        return new Vacancy([
+            'company_id' => $this->getState()->getIntermediateField('companyId', null),
+            'currency_id' => Currency::findOne(['code' => 'USD'])->id,
+        ]);
     }
 }

@@ -13,7 +13,7 @@ class UserState
 
     private function __construct()
     {
-        $fields['intermediate'] = [];
+        $this->fields['intermediate'] = [];
     }
 
     public function getName()
@@ -21,14 +21,23 @@ class UserState
         return $this->fields['name'] ?? null;
     }
 
-    public function setName(?string $value)
+    /**
+     * @param string|null $value
+     *
+     * @return mixed|null
+     */
+    public function setName(string $value = null)
     {
-        $this->fields['name'] = $value;
+        if (is_null($value)) {
+            unset($this->fields['name']);
+        } else {
+            $this->fields['name'] = $value;
+        }
     }
 
     /**
      * @param string $name
-     * @param null   $defaultValue
+     * @param null $defaultValue
      *
      * @return mixed|null
      */
@@ -49,11 +58,15 @@ class UserState
 
     /**
      * @param string $name
-     * @param        $value
+     * @param $value
      */
-    public function setIntermediateField(string $name, $value)
+    public function setIntermediateField(string $name, $value = null)
     {
-        $this->fields['intermediate'][$name] = $value;
+        if (is_null($value)) {
+            unset($this->fields['intermediate'][$name]);
+        } else {
+            $this->fields['intermediate'][$name] = $value;
+        }
     }
 
     /**
@@ -64,16 +77,6 @@ class UserState
     public function isIntermediateFieldExists(string $name)
     {
         return array_key_exists($name, $this->fields['intermediate']);
-    }
-
-    public function getIntermediateFieldArray(string $name, $defaultValue = null)
-    {
-        return $this->fields['intermediate'][$name] ?? $defaultValue;
-    }
-
-    public function setIntermediateFieldArray(string $name, ?array $value)
-    {
-        $this->fields['intermediate'][$name] = $value;
     }
 
     public function save(User $user)

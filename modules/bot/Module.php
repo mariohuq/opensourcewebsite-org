@@ -168,6 +168,10 @@ class Module extends \yii\base\Module
                         $botUser->provider_user_id
                     );
 
+                    if (!$chatMember) {
+                        return false;
+                    }
+
                     $chat->link('users', $botUser, [
                         'status' => $chatMember->getStatus(),
                     ]);
@@ -268,6 +272,7 @@ class Module extends \yii\base\Module
             if ($this->getChat()->isPrivate()) {
                 $this->getBotUserState()->setIntermediateField('private_message_ids', json_encode($privateMessageIds));
                 $this->getBotUserState()->save($this->getBotUser());
+                Yii::warning($this->getBotUserState());
             }
         }
 
